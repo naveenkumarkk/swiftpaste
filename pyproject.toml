@@ -4,4 +4,17 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.129.0",
+    "fastapi-users[sqlalchemy]>=15.0.4",
+    "httpx-oauth>=0.16.1",
+    "psycopg[binary]>=3.3.3",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "sqlalchemy>=2.0.46",
+    "uuid>=1.30",
+    "uvicorn>=0.41.0",
+]

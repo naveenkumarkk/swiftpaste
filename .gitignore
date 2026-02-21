@@ -1,0 +1,9 @@
+/app/__pycache__
+/alembic/versions
+/app/core/auth/__pycache__
+/app/db/__pycache__
+/app/models/__pycache__
+/app/schemas/__pycache__
+/app/core/__pycache__
+/alembic/__pycache__
+/app/core/auth/oauth/__pycache__
