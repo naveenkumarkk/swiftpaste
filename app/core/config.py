@@ -32,9 +32,9 @@ class Settings(BaseSettings):
     VERIFICATION_TOKEN_SECRET: str = "naveenpranesh28"
 
     GOOGLE_CLIENT_ID: str = Field(
-        default="880661213193-rue0o7619qet3h594u1lict3jc0hl6mf.apps.googleusercontent.com"
+        default="GOOGLE_CLIENT_ID"
     )
-    GOOGLE_CLIENT_SECRET: str = Field(default="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")
+    GOOGLE_CLIENT_SECRET: str = Field(default="GOOGLE_CLIENT_SECRET")
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
