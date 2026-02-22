@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from collections.abc import AsyncGenerator
-
+import app.db.soft_delete # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
 

@@ -1,4 +1,4 @@
-# SwiftPaste API Contract (v0)
+# SwiftPaste API Contract (V1)
 
 ## Base Rules
 
@@ -23,7 +23,7 @@ All timestamps are **UTC ISO-8601** (e.g. `2026-02-21T10:12:45Z`).
 - `public`
 - `private`
 
-> v0 note: “private” can behave like “unlisted” (not searchable, only accessible by link) until auth exists.
+> v1 note: “private” can behave like “unlisted” (not searchable, only accessible by link) until auth exists.
 
 ### Standard Error Shape
 

@@ -19,6 +19,7 @@ from app.core.exception_handlers import (
 from app.core.errors import AppError
 from app.core.middleware.request_logging import RequestLoggingMiddleware
 from app.core.logging import setup_logging
+from app.api.v1.routes import snippet
 
 setup_logging("DEBUG" if settings.DEBUG else "INFO")
 logger = logging.getLogger("app")
@@ -74,6 +75,11 @@ app.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix="/users",
     tags=["users"],
+)
+app.include_router(
+    snippet.router,
+    prefix=f"{settings.V1_API_PREFIX}/snippet",
+    tags=["Snippets"],
 )
 
 

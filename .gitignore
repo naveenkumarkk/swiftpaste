@@ -9,3 +9,9 @@
 /app/core/auth/oauth/__pycache__
 .env
 .env
+/app/api/__pycache__
+/app/api/v1/__pycache__
+/app/api/v1/routes/__pycache__
+/app/services/__pycache__
+/app/utils/__pycache__
+/app/core/middleware/__pycache__

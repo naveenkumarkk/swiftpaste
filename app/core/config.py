@@ -4,7 +4,7 @@ from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
-    API_PREFIX: str = Field(default="/api")
+    V1_API_PREFIX: str = Field(default="/v1/api")
     DEBUG: bool = Field(default=False)
 
     DATABASE_URL: str = Field(
@@ -33,8 +33,10 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = Field(default="GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET: str = Field(default="GOOGLE_CLIENT_SECRET")
-
-    REQUEST_ID_HEADER = "X-Request-Id"
+    
+    BACKEND_BASE_URL: str = Field(default="http://localhost:8000")
+    FRONTEND_BASE_URL: str = Field(default="http://localhost:8000")
+    DEFAULT_SHARE_TTL_SECONDS : int = 60 * 60 * 24
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
