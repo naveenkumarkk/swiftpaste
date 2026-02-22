@@ -31,10 +31,10 @@ class Settings(BaseSettings):
     RESET_PASSWORD_TOKEN_SECRET: str = "naveenpranesh"
     VERIFICATION_TOKEN_SECRET: str = "naveenpranesh28"
 
-    GOOGLE_CLIENT_ID: str = Field(
-        default="GOOGLE_CLIENT_ID"
-    )
+    GOOGLE_CLIENT_ID: str = Field(default="GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET: str = Field(default="GOOGLE_CLIENT_SECRET")
+
+    REQUEST_ID_HEADER = "X-Request-Id"
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

@@ -8,3 +8,4 @@
 /alembic/__pycache__
 /app/core/auth/oauth/__pycache__
 .env
+.env

@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -16,6 +17,11 @@ from app.core.exception_handlers import (
     unhandled_error_handler,
 )
 from app.core.errors import AppError
+from app.core.middleware.request_logging import RequestLoggingMiddleware
+from app.core.logging import setup_logging
+
+setup_logging("DEBUG" if settings.DEBUG else "INFO")
+logger = logging.getLogger("app")
 
 
 @asynccontextmanager
@@ -46,6 +52,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Logging Middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
