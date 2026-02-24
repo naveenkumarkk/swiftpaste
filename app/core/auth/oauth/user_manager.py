@@ -5,9 +5,9 @@ from app.db.database import AsyncSessionLocal
 from uuid import UUID
 from app.core.config import settings
 from typing import AsyncGenerator
+from fastapi_users.manager import UUIDIDMixin
 
-
-class UserManager(BaseUserManager[User, UUID]):
+class UserManager(UUIDIDMixin,BaseUserManager[User, UUID]):
     reset_password_token_secret = settings.RESET_PASSWORD_TOKEN_SECRET
     verification_token_secret = settings.VERIFICATION_TOKEN_SECRET
 

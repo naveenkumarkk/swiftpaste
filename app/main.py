@@ -19,7 +19,7 @@ from app.core.exception_handlers import (
 from app.core.errors import AppError
 from app.core.middleware.request_logging import RequestLoggingMiddleware
 from app.core.logging import setup_logging
-from app.api.v1.routes import snippet
+from app.api.v1.routes import snippet, health
 
 setup_logging("DEBUG" if settings.DEBUG else "INFO")
 logger = logging.getLogger("app")
@@ -80,6 +80,12 @@ app.include_router(
     snippet.router,
     prefix=f"{settings.V1_API_PREFIX}/snippet",
     tags=["Snippets"],
+)
+
+app.include_router(
+    health.router,
+    prefix=f"{settings.V1_API_PREFIX}/health",
+    tags=["Health"],
 )
 
 

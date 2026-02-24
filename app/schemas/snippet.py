@@ -5,7 +5,6 @@ from app.core.enum import VisibilityType
 from datetime import datetime
 from app.schemas.user import UserRead
 class SnippetCreate(BaseModel):
-    short_id: str
     content: str = Field(min_length=1, max_length=50000)
     visibility: VisibilityType = VisibilityType.PUBLIC
     expires_at: Optional[datetime] = None
