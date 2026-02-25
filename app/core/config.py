@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     DATABASE_SYNC_URL: str = Field(
         default="postgresql+psycopg://postgres:postgres@localhost:5432/swiftpaste"
     )
-
+    REDIS_URL: str = Field(
+        default="redis://redis:6379/0"
+    )
     ALLOWED_ORIGINS: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
@@ -33,10 +35,12 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = Field(default="GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET: str = Field(default="GOOGLE_CLIENT_SECRET")
-    
+
     BACKEND_BASE_URL: str = Field(default="http://localhost:8000")
     FRONTEND_BASE_URL: str = Field(default="http://localhost:8000")
-    DEFAULT_SHARE_TTL_SECONDS : int = 60 * 60 * 24
+    DEFAULT_SHARE_TTL_SECONDS: int = 60 * 60 * 24
+
+    CACHE_TTL_SECONDS: int = 900
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

@@ -19,7 +19,7 @@ from app.services.snippet_service import (
     update_snippet,
     delete_snippet,
     snippet_out_url,
-    snippet_out_view,
+    get_snippet_cached,
 )
 
 router = APIRouter()
@@ -118,6 +118,6 @@ async def view_snippet_out(
     user=Depends(optional_user),
 ):
     request_id = getattr(request.state, "request_id", None)
-    return await snippet_out_view(
+    return await get_snippet_cached(
         short_id=short_id, db_session=db, user=user, request_id=request_id
     )

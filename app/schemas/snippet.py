@@ -40,5 +40,4 @@ class SnippetOutResponse(BaseModel):
     share_url: HttpUrl
     expires_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
