@@ -15,3 +15,6 @@
 /app/services/__pycache__
 /app/utils/__pycache__
 /app/core/middleware/__pycache__
+/.venv
+/app/metrics/__pycache__
+/app/cache/__pycache__

@@ -202,7 +202,7 @@ async def snippet_out_view(
     db_session: AsyncSession,
     user,
     request_id: str | None = None,
-) -> SnippetResponse:
+) -> Snippet:  # <- was SnippetResponse
     now = datetime.now(timezone.utc)
 
     stmt = (
@@ -224,7 +224,6 @@ async def snippet_out_view(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    # If private, require login
     if snippet.visibility == VisibilityType.PRIVATE and user is None:
         raise AppError(
             code="SNIPPET_ACCESS_RESTRICTION",
@@ -247,7 +246,7 @@ async def snippet_out_view(
 async def get_snippet_cached(
     short_id: str,
     db_session: AsyncSession,
-    user,  # optional user allowed
+    user,
     request_id: str | None = None,
 ) -> SnippetResponse:
     r = get_redis()
@@ -258,31 +257,25 @@ async def get_snippet_cached(
         raw = await r.get(key)
         if raw:
             cache_hit.inc()
-            data = _deserialize_payload(raw)
-            # Return schema object (consistent with route)
+            data = _deserialize_payload(raw)  # dict
+            # validate dict -> SnippetResponse
             return SnippetResponse.model_validate(data)
         cache_miss.inc()
     except Exception:
         cache_error.inc()
 
+    # 2) DB read (and auth check)
     snippet = await snippet_out_view(short_id, db_session, user, request_id)
 
-    if snippet.visibility != VisibilityType.PUBLIC:
-        return SnippetResponse.model_validate(snippet, from_attributes=True)
+    # 3) Build the actual response object from ORM
+    resp = SnippetResponse.model_validate(snippet, from_attributes=True)
 
-    payload: dict[str, Any] = {
-        "shortId": short_id,
-        "author": snippet.author,
-        "expired_at": snippet.expires_at,
-        "content": snippet.content,
-        "visibility": str(snippet.visibility),  # ensure JSON-friendly
-        "createdAt": snippet.created_at.isoformat(),
-        "updatedAt": snippet.updated_at.isoformat() if snippet.updated_at else None,
-    }
+    # 4) Cache ONLY public (so cached responses are not user-dependent)
+    if snippet.visibility == VisibilityType.PUBLIC:
+        payload = resp.model_dump(mode="json")  # <- fixes UUID/datetime/enum shape
+        try:
+            await r.setex(key, settings.CACHE_TTL_SECONDS, _serialize_payload(payload))
+        except Exception:
+            cache_error.inc()
 
-    try:
-        await r.setex(key, settings.CACHE_TTL_SECONDS, _serialize_payload(payload))
-    except Exception:
-        cache_error.inc()
-
-    return SnippetResponse.model_validate(payload)
+    return resp

@@ -15,6 +15,14 @@ services:
       - .env
     depends_on:
       - db
+      - redis
+      - migrate
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/venv
+
 
   db:
     image: postgres:16
@@ -26,6 +34,19 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+  migrate:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      - db
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+    restart: "no"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/venv
   redis:
     image: redis:7-alpine
     ports:

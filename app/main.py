@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
-from app.db.database import create_db_and_tables  # ,AsyncSessionLocal
+#from app.db.database import create_db_and_tables  # ,AsyncSessionLocal
 from app.core.auth.manager import fastapi_users
 from app.core.auth.backend import auth_backend
 from app.core.auth.oauth.google import google_oauth_router
@@ -29,7 +29,7 @@ logger = logging.getLogger("app")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting Application")
-    await create_db_and_tables()
+    # sawait create_db_and_tables()
     # await with AsyncSessionLocal() as session:
     #     await seed_initial_data(session)
     print("Application Started Successfully")
