@@ -97,3 +97,7 @@ async def root():
 @app.get("/whoami")
 def whoami():
     return {"hostname": os.getenv("HOSTNAME")}
+
+@app.get("/pid")
+def pid():
+    return {"pid": os.getpid()}
