@@ -113,3 +113,19 @@ For every request (at minimum):
 - `statusCode`
 - `latencyMs`
 - `timestamp`
+
+### PATCH /snippets/{shortId}
+
+Rule: in one DB transaction
+
+lock snippet row
+
+new_version = latest_version + 1
+
+insert snippet_versions row
+
+update snippet.latest_version = new_version
+
+Locking matters so two edits don’t both create version “2”.
+
+In Postgres you use SELECT ... FOR UPDATE.
