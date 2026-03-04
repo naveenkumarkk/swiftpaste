@@ -55,3 +55,4 @@ class Snippet(SoftDeleteMixin, Base):
         nullable=False,
     )
     versions = relationship("SnippetVersion", back_populates="snippet", lazy="selectin")
+    author = relationship("User", back_populates="snippets")

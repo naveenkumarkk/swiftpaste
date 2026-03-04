@@ -129,3 +129,35 @@ update snippet.latest_version = new_version
 Locking matters so two edits don’t both create version “2”.
 
 In Postgres you use SELECT ... FOR UPDATE.
+
+versioning
+Create snippet
+
+POST /v1/snippets
+
+returns: short_id, version: 1
+
+Edit snippet (creates new version)
+
+POST /v1/snippets/{short_id}/versions
+
+body: new content
+
+returns: short_id, version: latest
+
+Read latest
+
+GET /v1/snippets/{short_id}
+(defaults to latest)
+
+Read specific version
+
+GET /v1/snippets/{short_id}?version=3
+or
+
+GET /v1/snippets/{short_id}/versions/3
+
+List versions
+
+GET /v1/snippets/{short_id}/versions
+(returns version numbers + timestamps, not full content unless requested)

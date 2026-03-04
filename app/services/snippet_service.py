@@ -14,12 +14,14 @@ from app.core.config import settings
 from app.core.enum import VisibilityType
 from app.core.errors import AppError
 from app.models.snippet import Snippet
+from app.models.snippet_version import SnippetVersion
 from app.schemas.snippet import (
     SnippetCreate,
     SnippetUpdate,
     SnippetOut,
     SnippetOutResponse,
     SnippetResponse,
+    SnippetVersionResponse
 )
 from app.utils.dep import generate_short_id, compute_expires_at
 import json
@@ -45,24 +47,50 @@ async def create_snippet(
     payload: SnippetCreate,
     user,
     request_id: str | None = None,
-) -> Snippet:
+) -> SnippetResponse:
+
     data = payload.model_dump()
     data["author_id"] = user.id
+
+    snippet_version_data = {
+        "content": data.pop("content"),
+        "visibility": data.pop("visibility"),
+        "expires_at": data.pop("expires_at"),
+        "version": 1,
+    }
 
     # Retry on rare short_id collisions
     for _ in range(2):
         snippet = Snippet(**data, short_id=generate_short_id(8))
         db_session.add(snippet)
+
         try:
+            # Flush to get snippet.id without committing
+            await db_session.flush()
+
+            # Create version and associate with snippet
+            snippet_version = SnippetVersion(
+                **snippet_version_data,
+                snippet_id=snippet.id,
+            )
+            db_session.add(snippet_version)
+
             await db_session.commit()
-            await db_session.refresh(snippet)
 
             stmt = (
                 select(Snippet)
-                .options(selectinload(Snippet.author))
+                .options(
+                    selectinload(Snippet.author),
+                    selectinload(Snippet.versions)
+                )
                 .where(Snippet.id == snippet.id)
             )
             snippet = (await db_session.execute(stmt)).scalar_one()
+
+            latest_version_obj = next(
+                (v for v in snippet.versions if v.version == snippet.latest_version),
+                snippet.versions[0]
+            )
 
             logger.info(
                 "snippet_created",
@@ -73,7 +101,20 @@ async def create_snippet(
                     "user_id": str(user.id),
                 },
             )
-            return snippet
+
+            return SnippetResponse(
+                id=snippet.id,
+                short_id=snippet.short_id,
+                created_at=snippet.created_at,
+                author=snippet.author,
+                latest_version=SnippetVersionResponse(
+                    version=latest_version_obj.version,
+                    content=latest_version_obj.content,
+                    visibility=latest_version_obj.visibility,
+                    expires_at=latest_version_obj.expires_at,
+                )
+            )
+
         except IntegrityError:
             await db_session.rollback()
 
@@ -82,7 +123,6 @@ async def create_snippet(
         message="Could not generate a unique short_id",
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
-
 
 async def update_snippet(
     id: UUID,

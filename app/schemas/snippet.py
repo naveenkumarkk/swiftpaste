@@ -1,9 +1,11 @@
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, Field, HttpUrl,ConfigDict
+from pydantic import BaseModel, Field, HttpUrl, ConfigDict
 from app.core.enum import VisibilityType
 from datetime import datetime
 from app.schemas.user import UserRead
+
+
 class SnippetCreate(BaseModel):
     content: str = Field(min_length=1, max_length=50000)
     visibility: VisibilityType = VisibilityType.PUBLIC
@@ -17,24 +19,29 @@ class SnippetUpdate(BaseModel):
     expires_at: Optional[datetime]
 
 
+class SnippetVersionResponse(BaseModel):
+    version: int
+    content: str
+    visibility: VisibilityType
+    expires_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class SnippetResponse(BaseModel):
     id: UUID
-    content: str
-    visibility: VisibilityType
-    author_id: UUID
-    expires_at: Optional[datetime]
-    created_at: datetime
-    updated_at: Optional[datetime]
+    short_id: str
     author: UserRead
+    created_at: datetime
+    latest_version: int
+    current_version: SnippetVersionResponse
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class SnippetOut(BaseModel):
-    ttl_seconds: Optional[int] = Field(
-        default=None, ge=60, le=60 * 60 * 24
-    )
+    ttl_seconds: Optional[int] = Field(default=None, ge=60, le=60 * 60 * 24)
+
 
 class SnippetOutResponse(BaseModel):
     share_url: HttpUrl

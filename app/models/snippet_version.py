@@ -51,4 +51,3 @@ class SnippetVersion(Base):
     )
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     snippet = relationship("Snippet", back_populates="versions")
-    author = relationship("User", back_populates="snippets")

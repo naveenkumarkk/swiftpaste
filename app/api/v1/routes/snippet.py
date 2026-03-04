@@ -105,7 +105,7 @@ async def share(
 
 
 @router.get(
-    "/view/{short_id}",
+    "/{short_id}",
     response_model=SnippetResponse,
     status_code=status.HTTP_200_OK,
     summary="View shared snippet",
