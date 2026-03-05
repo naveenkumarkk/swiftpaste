@@ -1,8 +1,8 @@
 from sqlalchemy import (
     Column,
-    Integer,
     String,
     ForeignKey,
+    Integer,
     DateTime,
     func,
     CheckConstraint,
@@ -36,23 +36,20 @@ class Snippet(SoftDeleteMixin, Base):
     short_id = Column(
         String(8), nullable=False, unique=True, index=True, default=generate_short_id
     )
-
+    title =  Column(String,nullable=False,default="")
     author_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    latest_version = Column(Integer, nullable=False, default=1)
-
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
+    version_counter = Column(Integer, default=1, nullable=False)
+
+   
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     versions = relationship("SnippetVersion", back_populates="snippet", lazy="selectin")
     author = relationship("User", back_populates="snippets")
+    

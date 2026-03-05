@@ -7,6 +7,7 @@ from app.schemas.user import UserRead
 
 
 class SnippetCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=1000)
     content: str = Field(min_length=1, max_length=50000)
     visibility: VisibilityType = VisibilityType.PUBLIC
     expires_at: Optional[datetime] = None
@@ -14,9 +15,8 @@ class SnippetCreate(BaseModel):
 
 
 class SnippetUpdate(BaseModel):
-    short_id: Optional[str]
+    title: Optional[str] = Field(min_length=1, max_length=1000)
     content: Optional[str] = Field(min_length=1, max_length=50000)
-    expires_at: Optional[datetime]
 
 
 class SnippetVersionResponse(BaseModel):
@@ -31,6 +31,7 @@ class SnippetVersionResponse(BaseModel):
 class SnippetResponse(BaseModel):
     id: UUID
     short_id: str
+    title: str
     author: UserRead
     created_at: datetime
     latest_version: int

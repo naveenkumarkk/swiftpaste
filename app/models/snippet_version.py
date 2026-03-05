@@ -5,14 +5,15 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     DateTime,
-    Enum as Choice,
     UniqueConstraint,
     func,
+    Enum as Choice,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.core.enum import VisibilityType
 from app.db.base import Base
+from app.core.enum import VisibilityType
+
 
 class SnippetVersion(Base):
     __tablename__ = "snippet_versions"
@@ -31,23 +32,14 @@ class SnippetVersion(Base):
         index=True,
     )
     version = Column(Integer, nullable=False)
-
     content = Column(Text, nullable=True)
     visibility = Column(
         Choice(VisibilityType, name="visibility_type_enum"),
         nullable=False,
         default=VisibilityType.PUBLIC,
     )
-
     expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     snippet = relationship("Snippet", back_populates="versions")

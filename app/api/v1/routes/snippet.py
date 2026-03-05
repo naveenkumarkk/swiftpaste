@@ -1,8 +1,6 @@
-# app/routes/snippet_routes.py
-
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.manager import fastapi_users
@@ -91,16 +89,18 @@ async def delete(
     summary="Create a share URL",
     description="Get the snippet url and share among your peers (extends expiry each time)",
 )
+
 async def share(
     id: UUID,
     payload: SnippetOut,
     request: Request,
+    version: int | None = Query(None),
     db: AsyncSession = Depends(get_async_session),
     user=Depends(current_user),
 ):
     request_id = getattr(request.state, "request_id", None)
     return await snippet_out_url(
-        id=id, db_session=db, payload=payload, user=user, request_id=request_id
+        id=id,version=version, db_session=db, payload=payload, user=user, request_id=request_id
     )
 
 
@@ -114,10 +114,11 @@ async def share(
 async def view_snippet_out(
     short_id: str,
     request: Request,
+    version: int | None = Query(None),
     db: AsyncSession = Depends(get_async_session),
     user=Depends(optional_user),
 ):
     request_id = getattr(request.state, "request_id", None)
     return await get_snippet_cached(
-        short_id=short_id, db_session=db, user=user, request_id=request_id
+        short_id=short_id,version=version, db_session=db, user=user, request_id=request_id
     )
