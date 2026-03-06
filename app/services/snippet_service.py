@@ -52,26 +52,26 @@ def _deserialize_payload(raw: bytes | str) -> dict[str, Any]:
 async def create_new_version(
     snippet_id: UUID, content: str, visibility: VisibilityType, db_session: AsyncSession
 ):
-    async with db_session.begin():
-        stmt = (
-            update(Snippet)
-            .where(Snippet.id == snippet_id)
-            .values(version_counter=Snippet.version_counter + 1)
-            .returning(Snippet.version_counter)
-        )
+    stmt = (
+        update(Snippet)
+        .where(Snippet.id == snippet_id)
+        .values(version_counter=Snippet.version_counter + 1)
+        .returning(Snippet.version_counter)
+    )
 
-        result = await db_session.execute(stmt)
+    result = await db_session.execute(stmt)
 
-        next_version = result.scalar_one()
+    next_version = result.scalar_one()
 
-        snippet_version = SnippetVersion(
-            snippet_id=snippet_id,
-            version=next_version,
-            content=content,
-            visibility=visibility,
-        )
+    snippet_version = SnippetVersion(
+        snippet_id=snippet_id,
+        version=next_version,
+        content=content,
+        visibility=visibility,
+    )
 
-        db_session.add(snippet_version)
+    await db_session.add(snippet_version)
+    await db_session.flush()
 
     return snippet_version
 
@@ -111,8 +111,12 @@ async def create_snippet(
             db_session.add(snippet_version)
 
             await db_session.commit()
-
-            await db_session.refresh(snippet)
+            # We are including attribute_names=["author"]) because snippet is an ORM object attached to an async session (db_session).
+            # You access snippet.author when building SnippetResponse.author is a relationship, which by default is lazy-loaded.
+            # SQLAlchemy async lazy-loading needs the object to be attached to an active async session, and internally it uses greenlet_spawn to allow await inside lazy loading.
+            # After your await db_session.commit() and await db_session.refresh(snippet), the session may no longer support lazy loading, depending on the flush/commit state,
+            #  so accessing snippet.author triggers MissingGreenlet Error
+            await db_session.refresh(snippet, attribute_names=["author"])
 
             logger.info(
                 "snippet_created",
@@ -130,11 +134,12 @@ async def create_snippet(
                 title=snippet.title,
                 created_at=snippet.created_at,
                 author=snippet.author,
-                visibility=snippet_version.visibility,
-                expires_at=snippet_version.expires_at,
+                latest_version=snippet_version.version,
                 current_version=SnippetVersionResponse(
                     version=snippet_version.version,
                     content=snippet_version.content,
+                    visibility=snippet_version.visibility,
+                    expires_at=snippet_version.expires_at,
                 ),
             )
 
@@ -337,7 +342,12 @@ async def snippet_out_view(
         )
     )
 
-    snippet = (await db_session.execute(stmt)).scalar_one_or_none()
+    # You want only one specific version (or the latest if version is None).
+    # With .join() + .contains_eager(), SQLAlchemy can populate the versions collection from that join, and your filter works.
+    # But it produces multiple rows if the snippet has multiple versions (even with the filter, the collection could be joined),
+    # which breaks scalar_one_or_none() unless you add .unique().
+
+    snippet = (await db_session.execute(stmt)).unique().scalar_one_or_none()
 
     if snippet is None or not snippet.versions:
         raise AppError(
