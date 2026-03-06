@@ -20,4 +20,6 @@ dependencies = [
     "sqlalchemy>=2.0.46",
     "uuid>=1.30",
     "uvicorn>=0.41.0",
+    "fastapi-pagination>=0.15.8"
+    
 ]
