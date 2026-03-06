@@ -21,6 +21,7 @@ from app.core.middleware.request_logging import RequestLoggingMiddleware
 from app.core.logging import setup_logging
 from app.api.v1.routes import snippet, health
 import os
+from fastapi_pagination import add_pagination
 
 setup_logging("DEBUG" if settings.DEBUG else "INFO")
 logger = logging.getLogger("app")
@@ -46,6 +47,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+add_pagination(app)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
