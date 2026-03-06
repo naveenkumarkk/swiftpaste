@@ -2,7 +2,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.auth.manager import fastapi_users
 from app.db.database import get_async_session
 from app.schemas.snippet import (
@@ -11,6 +10,7 @@ from app.schemas.snippet import (
     SnippetResponse,
     SnippetOut,
     SnippetOutResponse,
+    SnippetMetaResponse
 )
 from app.services.snippet_service import (
     create_snippet,
@@ -18,7 +18,10 @@ from app.services.snippet_service import (
     delete_snippet,
     snippet_out_url,
     get_snippet_cached,
+    get_all_snippet,
+    
 )
+from fastapi_pagination import  Page
 
 router = APIRouter()
 
@@ -89,7 +92,6 @@ async def delete(
     summary="Create a share URL",
     description="Get the snippet url and share among your peers (extends expiry each time)",
 )
-
 async def share(
     id: UUID,
     payload: SnippetOut,
@@ -100,7 +102,12 @@ async def share(
 ):
     request_id = getattr(request.state, "request_id", None)
     return await snippet_out_url(
-        id=id,version=version, db_session=db, payload=payload, user=user, request_id=request_id
+        id=id,
+        version=version,
+        db_session=db,
+        payload=payload,
+        user=user,
+        request_id=request_id,
     )
 
 
@@ -120,5 +127,25 @@ async def view_snippet_out(
 ):
     request_id = getattr(request.state, "request_id", None)
     return await get_snippet_cached(
-        short_id=short_id,version=version, db_session=db, user=user, request_id=request_id
+        short_id=short_id,
+        version=version,
+        db_session=db,
+        user=user,
+        request_id=request_id,
     )
+
+
+@router.get(
+    "/",
+    response_model=Page[SnippetMetaResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get All Snippets of current User",
+    description="API to get all the snippets and version created by the current logged in User",
+)
+async def get_all(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    user=Depends(current_user),
+):
+    request_id = getattr(request.state, "request_id", None)
+    return await get_all_snippet(request_id=request_id, db_session=db, user=user)

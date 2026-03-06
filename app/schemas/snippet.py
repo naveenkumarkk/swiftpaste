@@ -3,7 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl, ConfigDict
 from app.core.enum import VisibilityType
 from datetime import datetime
-from app.schemas.user import UserRead
+from app.schemas.user import UserMeta
 
 
 class SnippetCreate(BaseModel):
@@ -32,7 +32,7 @@ class SnippetResponse(BaseModel):
     id: UUID
     short_id: str
     title: str
-    author: UserRead
+    author: UserMeta
     created_at: datetime
     latest_version: int
     current_version: SnippetVersionResponse
@@ -48,4 +48,14 @@ class SnippetOutResponse(BaseModel):
     share_url: HttpUrl
     expires_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SnippetMetaResponse(BaseModel):
+    id: UUID
+    short_id: str
+    title: str
+    author: UserMeta
+    latest_version: int = Field(alias="version_counter")
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)

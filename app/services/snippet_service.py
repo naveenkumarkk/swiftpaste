@@ -8,7 +8,7 @@ from fastapi import status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import contains_eager, joinedload
+from sqlalchemy.orm import contains_eager, joinedload, aliased
 from app.metrics.cache_metrics import cache_hit, cache_error, cache_miss
 from app.core.config import settings
 from app.core.enum import VisibilityType
@@ -22,10 +22,13 @@ from app.schemas.snippet import (
     SnippetOutResponse,
     SnippetResponse,
     SnippetVersionResponse,
+    SnippetMetaResponse,
 )
 from app.utils.dep import generate_short_id, compute_expires_at
 import json
 from typing import Any
+from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination import Page
 
 logger = logging.getLogger("app")
 
@@ -69,8 +72,8 @@ async def create_new_version(
         content=content,
         visibility=visibility,
     )
-
-    await db_session.add(snippet_version)
+    # add() in SQLAlchemy is not async. It is a normal synchronous method.
+    db_session.add(snippet_version)
     await db_session.flush()
 
     return snippet_version
@@ -174,18 +177,34 @@ async def update_snippet(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
+    # Get Latest Snippet Version
+    stmt = select(SnippetVersion).where(
+        SnippetVersion.snippet_id == snippet.id,
+        SnippetVersion.version == snippet.version_counter,
+    )
+
+    current_version = (await db_session.execute(stmt)).scalar_one()
+    
     data = payload.model_dump(exclude_unset=True)
+
+    content_changed = "content" in data and data["content"] != current_version.content
+
+    visibility_changed = (
+        "visibility" in data and data["visibility"] != current_version.visibility
+    )
+    
     if "title" in data:
         snippet.title = data["title"]
 
     snippet_version = None
-    if "content" in data or "visibility" in data:
+
+    if content_changed or visibility_changed:
         snippet_version = await create_new_version(
             id,
             data.get("content"),
             data.get("visibility"),
             db_session=db_session,
-        )
+        )        
 
     await db_session.commit()
     await db_session.refresh(snippet)
@@ -434,3 +453,17 @@ async def get_snippet_cached(
             cache_error.inc()
 
     return snippet
+
+
+async def get_all_snippet(
+    db_session: AsyncSession, user, request_id: str | None = None
+) -> Page[SnippetMetaResponse]:
+
+    stmt = (
+        select(Snippet)
+        .options(joinedload(Snippet.author))
+        .where(Snippet.author_id == user.id)
+        .order_by(Snippet.created_at.desc())
+    )
+
+    return await paginate(db_session, stmt)
