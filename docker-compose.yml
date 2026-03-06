@@ -11,6 +11,20 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+  # To view the db in pgadmin Tool
+  pgadmin:
+    image: dpage/pgadmin4:9.8
+    ports:
+      - 5050:80
+    env_file:
+      - .env
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+    - pgadmin_data:/var/lib/pgadmin
 
   redis:
     image: redis:7-alpine
@@ -19,7 +33,9 @@ services:
     command: ["redis-server", "--appendonly", "no"]
 
   api:
-    build: .
+    build:
+      context: .
+      target: ${ENV:-dev} 
     ports:
       - "8000:8000"
     env_file:
@@ -28,13 +44,16 @@ services:
       - db
       - redis
     volumes:
-      - ./:/app  
+      - ${API_MOUNT:-.:/app}
     working_dir: /app
     environment:
       UV_PROJECT_ENVIRONMENT: /opt/venv
+    command: ${API_COMMAND:-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload}
 
   migrate:
-    build: .
+    build:
+      context: .
+      target: ${ENV:-dev}
     env_file:
       - .env
     depends_on:
@@ -45,7 +64,7 @@ services:
     environment:
       UV_PROJECT_ENVIRONMENT: /opt/venv
     volumes:
-      - ./:/app
+      - ${API_MOUNT:-.:/app}
 
   nginx:
     image: nginx:1.27-alpine
@@ -58,3 +77,4 @@ services:
 
 volumes:
   pgdata:
+  pgadmin_data:
