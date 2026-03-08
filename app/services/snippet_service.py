@@ -8,7 +8,7 @@ from fastapi import status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import contains_eager, joinedload, aliased
+from sqlalchemy.orm import contains_eager, joinedload
 from app.metrics.cache_metrics import cache_hit, cache_error, cache_miss
 from app.core.config import settings
 from app.core.enum import VisibilityType
@@ -152,7 +152,7 @@ async def create_snippet(
     raise AppError(
         code="SHORT_ID_GENERATION_FAILED",
         message="Could not generate a unique short_id",
-        status_code=500,
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
 
 

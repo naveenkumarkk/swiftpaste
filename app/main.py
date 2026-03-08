@@ -15,6 +15,7 @@ from app.core.exception_handlers import (
     validation_error_handler,
     http_error_handler,
     unhandled_error_handler,
+    db_exception_handler
 )
 from app.core.errors import AppError
 from app.core.middleware.request_logging import RequestLoggingMiddleware
@@ -22,6 +23,7 @@ from app.core.logging import setup_logging
 from app.api.v1.routes import snippet, health
 import os
 from fastapi_pagination import add_pagination
+from sqlalchemy.exc import DBAPIError
 
 setup_logging("DEBUG" if settings.DEBUG else "INFO")
 logger = logging.getLogger("app")
@@ -63,6 +65,7 @@ app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(StarletteHTTPException, http_error_handler)
 app.add_exception_handler(Exception, unhandled_error_handler)
+app.add_exception_handler(DBAPIError, db_exception_handler)
 
 
 app.include_router(

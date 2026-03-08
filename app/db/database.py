@@ -1,12 +1,18 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from collections.abc import AsyncGenerator
-import app.db.soft_delete # noqa: F401
+import app.db.soft_delete  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
 
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=True,
+    connect_args={
+        "timeout": 3,  # Connection Establishment Time out
+        "server_settings": {
+            "statement_timeout": "3000"  # Query Statement Timeout
+        },
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -14,9 +20,11 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
+
 
 async def create_db_and_tables():
     async with engine.begin() as conn:
