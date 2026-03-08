@@ -1,285 +1,440 @@
-# SwiftPaste — Engineering Log (So Far) + Next Steps
+# SwiftPaste
+
+SwiftPaste is a FastAPI-based snippet manager with snippet versioning, JWT auth, Redis read-through cache, and PostgreSQL persistence.
+
+## Stack
+
+- Python 3.13
+- FastAPI + Uvicorn
+- SQLAlchemy (async) + Alembic
+- PostgreSQL 16
+- Redis 7
+- NGINX (reverse proxy)
+- Docker Compose
+- Prometheus-compatible metrics via `prometheus_client`
+
+## Architecture
+
+```mermaid
+flowchart LR
+    C[Client] --> N[NGINX :80]
+    C --> A[FastAPI :8000]
+    N --> A
+
+    A --> M[Middlewares\nRequest Logging\nRequest Metrics\nCORS]
+    M --> R[API Routers]
+
+    R --> S[Snippet Service]
+    R --> H[Health Service]
+    R --> U[FastAPI Users Auth]
+
+    S --> RD[(Redis)]
+    S --> PG[(PostgreSQL)]
+    H --> RD
+    H --> PG
+    U --> PG
+
+    A --> P[/v1/api/health/metrics]
+```
+
+## Request Flow Diagram
+
+The main read path (`GET /v1/api/snippet/{short_id}`) is cache-first:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as FastAPI Route
+    participant Service as snippet_service.get_snippet_cached
+    participant Redis
+    participant DB as PostgreSQL
+
+    Client->>API: GET /v1/api/snippet/{short_id}?version=
+    API->>Service: get_snippet_cached(short_id, version, user)
+    Service->>Redis: GET snippet:{short_id}:v{version|latest}
+
+    alt Cache hit
+        Redis-->>Service: cached snippet JSON
+        Service-->>API: SnippetResponse
+        API-->>Client: 200
+    else Cache miss or Redis error
+        Service->>DB: query snippet + requested/latest version
+        Service->>Service: enforce visibility + expiry rules
+        alt snippet visibility is public
+            Service->>Redis: SETEX cache key (TTL)
+        end
+        Service-->>API: SnippetResponse
+        API-->>Client: 200/4xx
+    end
+```
+
+## Detailed Project Flow
+
+### 1. End-to-end request path
+
+Every API request follows this runtime path:
+
+1. Client sends request to NGINX (`:80`) or directly to FastAPI (`:8000`).
+1. NGINX forwards request to `api:8000`.
+1. FastAPI processes request through middleware:
+     - request ID + structured request logging
+     - request/response metrics capture
+     - CORS checks
+1. Router validates auth requirements (`current_user` or `optional_user`).
+1. Service layer runs business logic and accesses Redis/PostgreSQL.
+1. Errors are translated by centralized exception handlers.
+1. Response returns with `X-Request-Id` for traceability.
+
+### 2. Login and JWT flow
+
+```mermaid
+sequenceDiagram
+        participant Client
+        participant API as FastAPI /auth routes
+        participant UM as UserManager
+        participant DB as users table
+        participant JWT as JWT strategy
+
+        Client->>API: POST /auth/register
+        API->>UM: create user
+        UM->>DB: INSERT users
+        DB-->>UM: user row
+        UM-->>API: user created
+        API-->>Client: 201
 
-SwiftPaste is a Pastebin-style code-snippet manager built locally (Docker) to practice production-grade system design: reliability, scalability, performance, and observability — without cloud bills.
+        Client->>API: POST /auth/jwt/login
+        API->>DB: validate credentials
+        DB-->>API: user found + password valid
+        API->>JWT: create token (lifetime = JWT_LIFETIME_SECONDS)
+        JWT-->>API: bearer access token
+        API-->>Client: 200 {access_token, token_type}
 
----
+        Client->>API: POST /v1/api/snippet/ (Authorization: Bearer ...)
+        API->>API: current_user(active=True)
+        API-->>Client: 201 or 401
+```
+
+### 3. Google OAuth flow
+
+Google OAuth routes are mounted under `/auth/google` via `fastapi-users` OAuth router.
+
+```mermaid
+sequenceDiagram
+        participant Client
+        participant API as /auth/google/*
+        participant Google
+        participant DB as users table
+
+        Client->>API: GET /auth/google/authorize
+        API-->>Client: redirect/auth URL
+        Client->>Google: consent
+        Google-->>API: callback with code/state
+        API->>Google: exchange code for profile
+        API->>DB: create user or link by email (associate_by_email=True)
+        API-->>Client: auth response (token/session payload)
+```
+
+### 4. Database tables and ownership model
+
+`users` table (from FastAPI Users base + custom field):
+
+- `id` (UUID, PK)
+- `email` (unique)
+- `username` (unique)
+- `hashed_password`
+- `is_active`, `is_superuser`, `is_verified`
+
+`snippets` table:
+
+- `id` (UUID, PK)
+- `short_id` (unique, length = 8)
+- `title`
+- `author_id` (FK -> `users.id`)
+- `version_counter` (latest version number)
+- `created_at`, `deleted_at` (soft delete)
+
+`snippet_versions` table:
+
+- `id` (UUID, PK)
+- `snippet_id` (FK -> `snippets.id`)
+- `version` (unique per snippet via composite unique constraint)
+- `content`
+- `visibility` (`PUBLIC` or `PRIVATE`)
+- `expires_at`, `created_at`
+
+Relationship summary:
+
+- One user has many snippets.
+- One snippet has many immutable versions.
+- Reads exclude soft-deleted rows by default through SQLAlchemy event filtering.
+
+### 5. Snippet lifecycle flow
+
+Create (`POST /v1/api/snippet/`):
+
+1. Authenticated user is required.
+1. Service generates `short_id` (8 chars) and retries on collision.
+1. Inserts into `snippets` and first row in `snippet_versions` (`version = 1`).
+1. Returns full snippet response with current version.
+
+Update (`PUT /v1/api/snippet/{id}`):
+
+1. Confirms snippet ownership.
+1. Updates snippet title when provided.
+1. If content changed, increments `version_counter` and inserts a new version row.
+1. Updates cache for latest key `snippet:{short_id}:vlatest`.
+
+Share URL (`POST /v1/api/snippet/{id}/share`):
+
+1. Confirms ownership and selected version.
+1. Computes expiry (`ttl_seconds` or default TTL).
+1. Stores expiry in `snippet_versions.expires_at`.
+1. Returns `share_url` with `?v={version}`.
+
+Read (`GET /v1/api/snippet/{short_id}`):
+
+1. Attempts Redis cache read first.
+1. On miss/error, loads from DB.
+1. Enforces private visibility and expiry rules.
+1. Caches public payloads only.
+
+Delete (`DELETE /v1/api/snippet/{id}`):
+
+1. Ownership check.
+1. Soft delete is applied through DB event listeners.
+
+### 6. Redis cache handling
+
+- Client: `redis.asyncio` (`from_url`) with tight network timeouts:
+  - `socket_connect_timeout=0.1`
+  - `socket_timeout=0.1`
+- Key format: `snippet:{short_id}:v{version_or_latest}`
+- Read path behavior:
+  - 2 retry attempts on Redis `GET` with short backoff (`50ms`)
+  - increments `cache_hit_total`, `cache_miss_total`, `cache_error_total`
+- Write path behavior:
+  - `SETEX` with `CACHE_TTL_SECONDS`
+  - only public snippets are cached for shared read path
+- Degradation strategy:
+  - Redis failure does not fail request; service falls back to PostgreSQL
+
+### 7. Database handling
+
+- Async SQLAlchemy engine with:
+  - connect timeout (`DB_CONNECTION_TIMEOUT`)
+  - statement timeout (`DB_QUERY_TIMEOUT`, passed to PostgreSQL)
+- Per-request async DB session via dependency injection.
+- Alembic migrations are used for schema management.
+- Query-level metrics are captured via SQLAlchemy engine events.
+
+### 8. Error handling flow
+
+Centralized handlers in `app/core/exception_handlers.py` map failures to a consistent JSON envelope:
 
-## 1) What’s completed so far
+```json
+{
+    "error": {
+        "code": "STRING_CODE",
+        "message": "Human readable message",
+        "details": "optional details",
+        "requestId": "trace id"
+    }
+}
+```
 
-### 1.1 Repo + documentation
+Handled categories:
 
-- Created project repo structure (`swiftpaste/`) and `docs/` folder.
-- Wrote **v0 API contract** covering:
-  - `GET /health`
-  - `POST /snippets`
-  - `GET /s/{shortId}`
-- Standardized a **consistent error response shape** for all endpoints.
-- Defined **v0 SLO targets** (latency + error rate) to make performance measurable.
+- `AppError` -> business errors (`404`, `403`, `423`, etc.)
+- `RequestValidationError` -> `422`
+- `StarletteHTTPException` -> mapped HTTP error envelope
+- `DBAPIError` -> `503` database timeout/failure envelope
+- uncaught `Exception` -> `500`
 
-### 1.2 Key design decisions (locked)
+### 9. Fault tolerance and graceful degradation
 
-- **Short IDs:** random Base62, length = **8**
-- **Storage:** Postgres stores snippet content (`TEXT`)
-- **Privacy model:** **unlisted private**
-  - Anyone with the URL can read
-  - Private snippets must never appear in search/listing feeds
-- **Max content length:** **50,000** characters
-- **Primary key:** **UUID** (`id`)
+- Redis outage: read path falls back to DB and increments `cache_error_total`.
+- Redis health check timeout is isolated and short.
+- DB and Redis health are independently checked and exposed on readiness endpoint.
+- `short_id` collision handling retries before returning failure.
+- NGINX reverse proxy provides a stable ingress and supports API scaling (`--scale api=N`).
+- Soft delete prevents immediate hard data removal from normal query paths.
 
-### 1.3 Local runtime + database
+### 10. Monitoring and observability
 
-- Docker Compose runs the system locally.
-- `/health` endpoint works.
-- DB migrations exist (at least initial schema).
-- DB enforces:
-  - `short_id` uniqueness
-  - collision-handling strategy exists (retry on conflict)
+Metrics endpoint:
 
-### 1.4 MVP endpoints (end-to-end)
+- `GET /v1/api/health/metrics`
 
-- `POST /snippets` works end-to-end:
-  - accepts content + visibility
-  - returns shortId + url + createdAt
-- `GET /s/{shortId}` works end-to-end:
-  - returns snippet by shortId
-  - returns 404 for unknown/invalid IDs
-- Unique constraint on `short_id` enforced and collisions handled via retry.
+Key metric groups:
 
-### 1.5 Horizontal scaling + failure tolerance
+- HTTP:
+  - `http_requests_total`
+  - `http_request_errors_total`
+  - `http_request_latency_seconds`
+  - `http_request_size_bytes`
+  - `http_response_size_bytes`
+- DB:
+  - `db_query_latency_seconds`
+  - `db_slow_queries_total`
+- Cache:
+  - `cache_hit_total`
+  - `cache_miss_total`
+  - `cache_error_total`
 
-- Added **NGINX load balancer** in front of the API.
-- Ran multiple API replicas behind NGINX.
-- Validated behavior under failure:
-  - killed an API container during traffic
-  - system stayed available (no single point of failure at app layer)
+Logging and traceability:
 
-### 1.6 Caching with Redis + measurement
+- JSON structured logs to stdout.
+- Request logs include method, path, status, latency, request ID.
+- `X-Request-Id` is echoed back in response headers.
 
-- Implemented **read-through caching** for snippet reads:
-  - `GET` checks Redis first; falls back to Postgres on miss; stores with TTL.
-- Added minimal cache observability:
-  - `cache_hit_total`, `cache_miss_total`, `cache_error_total`
-  - cache hit rate computed from counters
-- Verified impact with load tests:
-  - cold-cache vs warm-cache runs
-  - p95 latency improvement measured
-- Confirmed graceful degradation:
-  - Redis down → fallback to Postgres (slower, but still working)
+### 11. Other implemented features
 
----
+- Snippet versioning with immutable historical rows.
+- Visibility controls (`public`, `private`) at version level.
+- Expiring shared links via TTL-based `expires_at` management.
+- User-scoped snippet listing with pagination.
+- Health endpoints for liveness/readiness and dependency status.
 
-## 2) Architecture snapshot (current)
+## Core Endpoints
 
-**Client → NGINX → API replicas → Postgres**
-                     ↘︎ Redis (cache)
+Base API prefix is `/v1/api` (from `settings.V1_API_PREFIX`).
 
-- Postgres is the source of truth.
-- Redis accelerates hot reads.
-- NGINX enables local horizontal scaling.
-- Metrics/logging exist enough to validate SLOs and cache behavior.
+### Snippet routes
 
----
+- `POST /v1/api/snippet/` create snippet (auth required)
+- `PUT /v1/api/snippet/{id}` update snippet by UUID (auth required)
+- `DELETE /v1/api/snippet/{id}` soft-delete snippet by UUID (auth required)
+- `POST /v1/api/snippet/{id}/share` create/extend share URL (auth required)
+- `GET /v1/api/snippet/{short_id}` read shared snippet (optional auth)
+- `GET /v1/api/snippet/` list current user snippets (paginated, auth required)
 
-## 3) Performance & cache validation results (k6)
+### Health and metrics routes
 
-### What the counters showed
+- `GET /v1/api/health/` combined health check
+- `GET /v1/api/health/ready` readiness check
+- `GET /v1/api/health/health` liveness check
+- `GET /v1/api/health/metrics` Prometheus metrics
 
-**Before the k6 run**
+### Auth routes
 
-- `cache_hit_total = 54655`
-- `cache_miss_total = 71`
+- `POST /auth/jwt/login`
+- `POST /auth/jwt/logout`
+- `POST /auth/register`
+- `GET /users/me`
+- Google OAuth routes under `/auth/google`
 
-**After the k6 run**
+## Project Startup Commands
 
-- `cache_hit_total = 73483`
-- `cache_miss_total = 77`
-- `cache_error_total = 0`
+### 1) Docker startup (recommended)
 
-### Deltas for that run
+1. Copy env file.
 
-- Δhit  = 73483 − 54655 = **18828**
-- Δmiss = 77 − 71 = **6**
+```powershell
+Copy-Item .env.example .env
+```
 
-**Warm-cache hit rate**
+```bash
+cp .env.example .env
+```
 
-- hit_rate = 18828 / (18828 + 6)
-- = 18828 / 18834
-- = **0.99968 ≈ 99.97%**
+1. Start the stack.
 
-This is a textbook warm-cache result.
+```bash
+docker compose up --build -d
+```
 
-### Latency improvement (p95)
+1. Run migrations.
 
-- Earlier run p95: **228.03 ms**
-- This run p95: **212.09 ms**
+```bash
+docker compose run --rm migrate
+```
 
-Improvement:
+1. Verify services.
 
-- 228.03 − 212.09 = **15.94 ms**
-- 15.94 / 228.03 ≈ **6.99% (~7%)**
+```bash
+curl http://localhost/v1/api/health/ready
+```
 
-Interpretation:
+Useful URLs:
 
-- Cache is helping, but not massively — likely because response cost is still dominated by JSON serialization and proxy overhead (and possibly returning a larger payload).
+- API docs: `http://localhost/docs`
+- ReDoc: `http://localhost/redoc`
+- Metrics: `http://localhost/v1/api/health/metrics`
+- PgAdmin: `http://localhost:5050`
 
-### Redis-down fallback test
+### 2) Local startup (API on host, DB/Redis in Docker)
 
-- Redis stopped → `cache_error_total` increased to **562**
-- API still served requests via Postgres fallback (no outage)
-- After Redis restart, the system returned to normal (no persistent breakage)
+1. Start only dependencies.
 
----
+```bash
+docker compose up -d db redis
+```
 
-## 4) Acceptance criteria write-up (cache milestone)
+1. Set local host-based connection values (important: use `localhost`, not `db`).
 
-### 4.1 Observability (minimum) — PASS
+```powershell
+$env:DATABASE_URL="postgresql+asyncpg://postgres:naveenpranesh@localhost:5432/swiftpaste"
+$env:DATABASE_SYNC_URL="postgresql+psycopg://postgres:naveenpranesh@localhost:5432/swiftpaste"
+$env:REDIS_URL="redis://localhost:6379/0"
+```
 
-- `cache_hit_total`, `cache_miss_total`, `cache_error_total` exported on `/v1/api/health/metrics`
-- cache hit rate computed from counters:
-  - `hits / (hits + misses)`
+1. Install dependencies and run migrations.
 
-### 4.2 Cold vs warm cache — PASS
+```bash
+uv sync --dev
+uv run alembic upgrade head
+```
 
-From warm run:
+1. Start the API.
 
-- Δhits = **18828**
-- Δmisses = **6**
-- Warm hit rate ≈ **99.97%**
-- p95 improved from **~228ms → ~212ms** (**~7%**)
+```bash
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-### 4.3 Redis-down fallback — PASS
+Alternative local entrypoint:
 
-- Redis down increases `cache_error_total` (observed **562**)
-- API still serves reads (fallback to Postgres)
-- Recovery after Redis restart without persistent failures
+```bash
+uv run python main.py
+```
 
----
+Docs URL in this mode:
 
-## 5) What “production-grade” still requires (next steps)
+- `http://localhost:8000/docs`
 
-Below is a practical roadmap. Each step is scoped so it can be shipped and tested.
+## Docker Commands Reference
 
-### Step 1 — Versioning (edits without breaking old links)
+- Start all services: `docker compose up -d`
+- Rebuild and start: `docker compose up --build -d`
+- View logs: `docker compose logs -f api nginx`
+- Run one-off migration: `docker compose run --rm migrate`
+- Scale API containers: `docker compose up -d --scale api=3`
+- Stop and keep volumes: `docker compose down`
+- Stop and remove volumes: `docker compose down -v`
 
-**Goal:** allow editing a snippet while preserving historical versions.
+## Data Model (Current)
 
-- Data model:
-  - store multiple versions per shortId
-  - define “latest” read behavior
-- API additions:
-  - `PATCH /snippets/{shortId}` (create new version)
-  - optional: `GET /s/{shortId}?v=3` (fetch old version)
-- Cache change:
-  - version-aware keys (avoid stale reads)
-  - e.g., cache `snippet:{shortId}:v{n}` and/or `snippet:{shortId}:latest`
+- `users` auth users (FastAPI Users)
+- `snippets` snippet metadata + `short_id` + `version_counter`
+- `snippet_versions` immutable content versions per snippet
 
-**Acceptance tests**
+Notes:
 
-- Edit creates a new version.
-- Old versions are still retrievable.
-- Cache never serves outdated content after an edit.
+- `short_id` length is fixed to 8 characters.
+- Read queries apply a soft-delete filter via SQLAlchemy events.
+- Cache key format is `snippet:{short_id}:v{version_or_latest}`.
 
----
+## Observability
 
-### Step 2 — Abuse resistance (rate limiting + payload limits)
+- Request logging middleware adds `X-Request-Id` and structured logs.
+- Request and DB latency metrics are recorded with Prometheus histograms.
+- Cache counters exposed:
+  - `cache_hit_total`
+  - `cache_miss_total`
+  - `cache_error_total`
 
-**Goal:** prevent one user from melting your system.
+## Development Notes
 
-- Rate limiting (start at NGINX or API layer):
-  - per-IP limits for `POST /snippets` (stricter)
-  - separate limits for `GET` (looser)
-- Body size enforcement:
-  - reject content larger than max length early
-
-**Acceptance tests**
-
-- sustained spam hits 429
-- normal use unaffected
-
----
-
-### Step 3 — Reliability hardening (timeouts, retries, circuit behavior)
-
-**Goal:** predictable behavior under partial failure.
-
-- Add timeouts for:
-  - Postgres queries
-  - Redis calls
-- Define retry rules:
-  - retry safe operations (idempotent reads) carefully
-  - avoid retry storms
-- Add “fail-open” cache behavior:
-  - Redis errors should not break reads
-
-**Acceptance tests**
-
-- Redis slow/down does not cause API meltdown.
-- Postgres slow triggers controlled errors (not indefinite hanging).
-
----
-
-### Step 4 — Observability upgrade (production-style)
-
-**Goal:** you can debug latency + errors quickly.
-
-- Request ID propagation:
-  - NGINX → API → logs
-- Structured logs to STDOUT (container best practice)
-- Metrics:
-  - request rate, error rate
-  - latency histograms (p50/p95/p99)
-  - cache hit rate
-- Optional: tracing later (OpenTelemetry)
-
-**Acceptance tests**
-
-- can correlate a single request across NGINX + API logs using request_id
-- can explain p95 spikes with metrics (cache miss vs DB latency, etc.)
-
----
-
-### Step 5 — Search + tags (eventual consistency)
-
-**Goal:** add search without slowing down the core read path.
-
-- Keep Postgres as source of truth.
-- Choose a search approach:
-  - start with Postgres full-text search (simple)
-  - later: async indexing to a search service (more distributed)
-- Eventual consistency path:
-  - write event → async index update
-
-**Acceptance tests**
-
-- creating snippets doesn’t block on search indexing
-- search results converge within a defined time window
-
----
-
-### Step 6 — Chaos + load testing “as a feature”
-
-**Goal:** treat reliability as a product requirement.
-
-- automated load tests (repeatable)
-- kill container tests (repeatable)
-- Redis down tests
-- Postgres restart tests
-
-**Acceptance tests**
-
-- SLOs remain stable across runs
-- regressions are caught early
-
----
-
-## 6) Suggested immediate next milestone
-
-**Implement Versioning + Version-aware caching.**
-
-Why next:
-
-- core product feature (Pastebin-like edits)
-- forces cache correctness (a real production problem)
-- sets you up cleanly for search/tags later
-
----
+- Default compose API command runs in reload mode:
+  - `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
+- Alembic reads `DATABASE_SYNC_URL` from settings via `alembic/env.py`.
+- Current migration set includes initial schema in `alembic/versions/d07059efe000_initial_migration.py`.

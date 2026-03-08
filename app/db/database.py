@@ -11,7 +11,9 @@ engine = create_async_engine(
     connect_args={
         "timeout": settings.DB_CONNECTION_TIMEOUT,  # Connection Establishment Time out
         "server_settings": {
-            "statement_timeout": settings.DB_QUERY_TIMEOUT  # Query Statement Timeout
+            "statement_timeout": str(
+                settings.DB_QUERY_TIMEOUT
+            )  # Query Statement Timeout
         },
     },
 )

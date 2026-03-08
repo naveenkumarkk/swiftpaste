@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi_users.manager import UUIDIDMixin
 from fastapi_users import BaseUserManager
 from app.models.user import User
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 
 
 class UserRead(schemas.BaseUser[UUID]):
@@ -32,8 +32,8 @@ class UserMeta(BaseModel):
     email: EmailStr
     username: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class UserCreateCustom(BaseModel):
     email: EmailStr
