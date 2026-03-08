@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
-#from app.db.database import create_db_and_tables  # ,AsyncSessionLocal
+
+# from app.db.database import create_db_and_tables  # ,AsyncSessionLocal
 from app.core.auth.manager import fastapi_users
 from app.core.auth.backend import auth_backend
 from app.core.auth.oauth.google import google_oauth_router
@@ -15,10 +16,11 @@ from app.core.exception_handlers import (
     validation_error_handler,
     http_error_handler,
     unhandled_error_handler,
-    db_exception_handler
+    db_exception_handler,
 )
 from app.core.errors import AppError
 from app.core.middleware.request_logging import RequestLoggingMiddleware
+from app.core.middleware.request_metrics import MetricsMiddleware
 from app.core.logging import setup_logging
 from app.api.v1.routes import snippet, health
 import os
@@ -60,6 +62,7 @@ app.add_middleware(
 )
 # Logging Middleware
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(MetricsMiddleware)
 
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -99,9 +102,11 @@ app.include_router(
 async def root():
     return {"message": "Hello from Swift paste"}
 
+
 @app.get("/whoami")
 def whoami():
     return {"hostname": os.getenv("HOSTNAME")}
+
 
 @app.get("/pid")
 def pid():

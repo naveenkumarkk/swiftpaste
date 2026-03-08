@@ -30,7 +30,7 @@ import json
 from typing import Any
 from fastapi_pagination.ext.sqlalchemy import paginate
 from fastapi_pagination import Page
-
+from app.metrics.version_metrics import version_creations
 
 logger = logging.getLogger("app")
 
@@ -77,7 +77,8 @@ async def create_new_version(
     # add() in SQLAlchemy is not async. It is a normal synchronous method.
     db_session.add(snippet_version)
     await db_session.flush()
-
+    # Prometheus Metric
+    version_creations.inc()
     return snippet_version
 
 

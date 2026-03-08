@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     DEFAULT_SHARE_TTL_SECONDS: int = 60 * 60 * 24
 
     CACHE_TTL_SECONDS: int = 900
+    SLOW_QUERY_THRESHOLD = 0.2
+    DB_CONNECTION_TIMEOUT = 3 #seconds
+    DB_QUERY_TIMEOUT = 3000 #Milli seconds
+    PROMETHEUS_DB_SLOWQUERY_THRESHOLD = 0.2 #SECONDS
+    HEALTH_CHECK_TIMEOUT = 5.0 
+
+
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
