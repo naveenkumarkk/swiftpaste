@@ -3,6 +3,7 @@
 from uuid import UUID
 from datetime import datetime, timezone
 import logging
+import asyncio
 from app.cache.redis_client import get_redis
 from fastapi import status
 from sqlalchemy import select, update
@@ -29,6 +30,7 @@ import json
 from typing import Any
 from fastapi_pagination.ext.sqlalchemy import paginate
 from fastapi_pagination import Page
+
 
 logger = logging.getLogger("app")
 
@@ -184,7 +186,7 @@ async def update_snippet(
     )
 
     current_version = (await db_session.execute(stmt)).scalar_one()
-    
+
     data = payload.model_dump(exclude_unset=True)
 
     content_changed = "content" in data and data["content"] != current_version.content
@@ -192,7 +194,7 @@ async def update_snippet(
     visibility_changed = (
         "visibility" in data and data["visibility"] != current_version.visibility
     )
-    
+
     if "title" in data:
         snippet.title = data["title"]
 
@@ -204,7 +206,7 @@ async def update_snippet(
             data.get("content"),
             data.get("visibility"),
             db_session=db_session,
-        )        
+        )
 
     await db_session.commit()
     await db_session.refresh(snippet)
@@ -422,6 +424,15 @@ async def snippet_out_view(
     )
 
 
+async def redis_get_with_retry(redis, key):
+    for _ in range(2):
+        try:
+            return await redis.get(key)
+        except Exception:
+            await asyncio.sleep(0.05)
+    return None
+
+
 async def get_snippet_cached(
     short_id: str,
     version: int | None,
@@ -434,7 +445,7 @@ async def get_snippet_cached(
     key = _cache_key(short_id, version)
 
     try:
-        raw = await r.get(key)
+        raw = await redis_get_with_retry(r, key)
         if raw:
             cache_hit.inc()
             data = _deserialize_payload(raw)
