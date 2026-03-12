@@ -19,3 +19,4 @@
 /app/metrics/__pycache__
 /app/cache/__pycache__
 .env.prod
+/app/rate_limiter/__pycache__

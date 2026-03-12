@@ -10,7 +10,7 @@ from app.schemas.snippet import (
     SnippetResponse,
     SnippetOut,
     SnippetOutResponse,
-    SnippetMetaResponse
+    SnippetMetaResponse,
 )
 from app.services.snippet_service import (
     create_snippet,
@@ -19,9 +19,9 @@ from app.services.snippet_service import (
     snippet_out_url,
     get_snippet_cached,
     get_all_snippet,
-    
 )
-from fastapi_pagination import  Page
+from fastapi_pagination import Page
+from app.rate_limiter.decorator import rate_limit
 
 router = APIRouter()
 
@@ -36,6 +36,7 @@ optional_user = fastapi_users.current_user(optional=True)
     summary="Create a Snippet",
     description="Create a Snippet and share the url among your peers",
 )
+@rate_limit()
 async def create(
     request: Request,
     payload: SnippetCreate,
@@ -55,6 +56,7 @@ async def create(
     summary="Update a Snippet",
     description="Update a snippet you own",
 )
+@rate_limit()
 async def update(
     id: UUID,
     request: Request,
@@ -74,6 +76,7 @@ async def update(
     summary="Delete Snippet",
     description="Soft delete a snippet you own",
 )
+@rate_limit()
 async def delete(
     id: UUID,
     request: Request,
@@ -92,6 +95,7 @@ async def delete(
     summary="Create a share URL",
     description="Get the snippet url and share among your peers (extends expiry each time)",
 )
+@rate_limit()
 async def share(
     id: UUID,
     payload: SnippetOut,
@@ -112,12 +116,30 @@ async def share(
 
 
 @router.get(
+    "/",
+    response_model=Page[SnippetMetaResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get All Snippets of current User",
+    description="API to get all the snippets and version created by the current logged in User",
+)
+@rate_limit()
+async def get_all(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    user=Depends(current_user),
+):
+    request_id = getattr(request.state, "request_id", None)
+    return await get_all_snippet(request_id=request_id, db_session=db, user=user)
+
+
+@router.get(
     "/{short_id}",
     response_model=SnippetResponse,
     status_code=status.HTTP_200_OK,
     summary="View shared snippet",
     description="Endpoint to access the shared snippet",
 )
+@rate_limit(capacity=5, refill_rate=1)
 async def view_snippet_out(
     short_id: str,
     request: Request,
@@ -133,19 +155,3 @@ async def view_snippet_out(
         user=user,
         request_id=request_id,
     )
-
-
-@router.get(
-    "/",
-    response_model=Page[SnippetMetaResponse],
-    status_code=status.HTTP_200_OK,
-    summary="Get All Snippets of current User",
-    description="API to get all the snippets and version created by the current logged in User",
-)
-async def get_all(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    user=Depends(current_user),
-):
-    request_id = getattr(request.state, "request_id", None)
-    return await get_all_snippet(request_id=request_id, db_session=db, user=user)

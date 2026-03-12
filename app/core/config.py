@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     PROMETHEUS_DB_SLOWQUERY_THRESHOLD: float = 0.2  # SECONDS
     HEALTH_CHECK_TIMEOUT:float = 5.0
 
+    # REDIS RATE LIMITER
+    CAPACITY:int = 10
+    REFILL_RATE:int = 1
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def parse_allowed_origins(cls, v: Any) -> list[str]:
