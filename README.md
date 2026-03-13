@@ -34,7 +34,7 @@ flowchart LR
     H --> PG
     U --> PG
 
-    A --> P[/v1/api/health/metrics]
+    A --> P["/v1/api/health/metrics"]
 ```
 
 ## Request Flow Diagram
@@ -439,5 +439,4 @@ Notes:
 - Alembic reads `DATABASE_SYNC_URL` from settings via `alembic/env.py`.
 - Current migration set includes initial schema in `alembic/versions/d07059efe000_initial_migration.py`.
 
-
-please note that this project is still in progress 😁
+Please note that this project is still in progress 😁
