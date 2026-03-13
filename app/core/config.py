@@ -40,14 +40,18 @@ class Settings(BaseSettings):
 
     CACHE_TTL_SECONDS: int = 900
     SLOW_QUERY_THRESHOLD: float = 0.2
-    DB_CONNECTION_TIMEOUT:int = 3  # seconds
-    DB_QUERY_TIMEOUT:int = 3000  # Milli seconds
+    DB_CONNECTION_TIMEOUT: int = 3  # seconds
+    DB_QUERY_TIMEOUT: int = 3000  # Milli seconds
     PROMETHEUS_DB_SLOWQUERY_THRESHOLD: float = 0.2  # SECONDS
-    HEALTH_CHECK_TIMEOUT:float = 5.0
+    HEALTH_CHECK_TIMEOUT: float = 5.0
 
     # REDIS RATE LIMITER
-    CAPACITY:int = 10
-    REFILL_RATE:int = 1
+    CAPACITY: int = 10
+    REFILL_RATE: int = 1
+
+    QUEUE: str = "jobs"
+    PROCESSING: str = "processing"
+    FAILED: str = "failed"
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

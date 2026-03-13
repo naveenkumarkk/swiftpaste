@@ -21,4 +21,6 @@ dependencies = [
     "uuid>=1.30",
     "uvicorn>=0.41.0",
     "fastapi-pagination>=0.15.8",
+    "rq>=2.7.0",
+    "arq>=0.25.0",
 ]

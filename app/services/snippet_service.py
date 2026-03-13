@@ -31,6 +31,8 @@ from typing import Any
 from fastapi_pagination.ext.sqlalchemy import paginate
 from fastapi_pagination import Page
 from app.metrics.version_metrics import version_creations
+from app.jobs.queue import enqueue
+from app.utils.dep import tokenize
 
 logger = logging.getLogger("app")
 
@@ -133,7 +135,14 @@ async def create_snippet(
                     "user_id": str(user.id),
                 },
             )
-
+            await enqueue(
+                "index_snippet",
+                {
+                    "snippet_id": snippet.id,
+                    "short_id": snippet.short_id,
+                    "text": snippet.title + " " + snippet_version.content,
+                },
+            )
             return SnippetResponse(
                 id=snippet.id,
                 short_id=snippet.short_id,
@@ -259,7 +268,9 @@ async def delete_snippet(
     user,
     request_id: str | None = None,
 ) -> None:
+
     stmt = select(Snippet).where(Snippet.id == id, Snippet.author_id == user.id)
+
     snippet = (await db_session.execute(stmt)).scalar_one_or_none()
 
     if snippet is None:
@@ -269,8 +280,26 @@ async def delete_snippet(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
+    stmt = select(SnippetVersion).where(
+        SnippetVersion.snippet_id == snippet.id,
+        SnippetVersion.version == snippet.version_counter,
+    )
+
+    current_version = (await db_session.execute(stmt)).scalar_one_or_none()
+
+    content = current_version.content if current_version else ""
+
     await db_session.delete(snippet)
     await db_session.commit()
+
+    await enqueue(
+        "remove_snippet_index",
+        {
+            "snippet_id": snippet.id,
+            "short_id": snippet.short_id,
+            "text": f"{snippet.title} {content}",
+        },
+    )
 
     logger.info(
         "snippet_deleted",
@@ -280,7 +309,6 @@ async def delete_snippet(
             "user_id": str(user.id),
         },
     )
-    return None
 
 
 async def snippet_out_url(
@@ -323,6 +351,15 @@ async def snippet_out_url(
 
     await db_session.commit()
 
+    redis = get_redis()
+    await redis.zadd(
+        "snippets:expiry",
+        {
+            f"snippet:{snippet.id}:{version_obj.version}": int(
+                version_obj.expires_at.timestamp()
+            )
+        },
+    )
     logger.info(
         "snippet_share_link_generated",
         extra={
@@ -479,3 +516,18 @@ async def get_all_snippet(
     )
 
     return await paginate(db_session, stmt)
+
+
+async def search_snippets(query: str):
+    redis = get_redis()
+
+    tokens = tokenize(query)
+
+    keys = [f"search:index:{t}" for t in tokens]
+
+    if not keys:
+        return []
+
+    ids = await redis.sinter(*keys)
+
+    return ids

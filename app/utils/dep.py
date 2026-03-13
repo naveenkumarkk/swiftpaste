@@ -1,6 +1,7 @@
 import secrets
 import string
 from datetime import datetime, timezone, timedelta
+import re
 
 _BASE62 = string.ascii_letters + string.digits  # a-zA-Z0-9
 
@@ -11,3 +12,7 @@ def generate_short_id(length: int = 8) -> str:
 
 def compute_expires_at(ttl_seconds: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+
+def tokenize(text: str):
+    words = re.findall(r"\w+", text.lower())
+    return set(words)

@@ -20,3 +20,4 @@
 /app/cache/__pycache__
 .env.prod
 /app/rate_limiter/__pycache__
+/app/jobs/__pycache__
