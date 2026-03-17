@@ -1,12 +1,14 @@
 import asyncio
-from app.cache.redis_client import get_redis
 import time
-from app.core.config import settings
-from app.jobs.queue import enqueue
 
+from app.cache.redis_client import get_redis
+from app.core.config import settings
+from app.core.logging import setup_logging
+from app.jobs.queue import enqueue
+from app.jobs.worker import worker
 
 async def dispatch_scheduled_jobs():
-    redis = await get_redis()
+    redis = get_redis()
 
     while True:
         now = int(time.time())
@@ -24,13 +26,16 @@ async def dispatch_scheduled_jobs():
         await asyncio.sleep(1)
 
 
-async def schedule_maintenance():
-
+async def main():
     await enqueue("cleanup_expired", {}, retries=3)
     await enqueue("recover_stuck_jobs", {}, retries=3)
 
-    await dispatch_scheduled_jobs()
-
+    await asyncio.gather(
+        worker(),
+        dispatch_scheduled_jobs(),
+    )
 
 if __name__ == "__main__":
-    asyncio.run(schedule_maintenance())
+    setup_logging("DEBUG" if settings.DEBUG else "INFO")
+    asyncio.run(main())
+

@@ -16,8 +16,8 @@ def get_redis() -> Redis:
             redis_url,
             encoding="utf-8",
             decode_responses=True,
-            socket_connect_timeout=0.1,  # 100ms connection timeout
-            socket_timeout=0.1,  # 100ms read/write timeout
+            socket_connect_timeout=5,  
+            socket_timeout=None,  
             max_connections=50,
             health_check_interval=30,
         )

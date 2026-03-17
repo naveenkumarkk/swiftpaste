@@ -21,3 +21,4 @@
 .env.prod
 /app/rate_limiter/__pycache__
 /app/jobs/__pycache__
+/tests/__pycache__

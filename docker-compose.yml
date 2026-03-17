@@ -54,7 +54,7 @@ services:
     build:
       context: .
       target: ${ENV:-dev}
-    command: python -m app.jobs.worker
+    command: uv run python -m app.jobs.worker
     env_file:
       - .env
     depends_on:
@@ -68,7 +68,7 @@ services:
     build:
       context: .
       target: ${ENV:-dev}
-    command: python -m app.jobs.scheduler
+    command: uv run python -m app.jobs.scheduler
     env_file:
       - .env
     depends_on:

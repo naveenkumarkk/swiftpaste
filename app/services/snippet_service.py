@@ -138,7 +138,7 @@ async def create_snippet(
             await enqueue(
                 "index_snippet",
                 {
-                    "snippet_id": snippet.id,
+                    "snippet_id": str(snippet.id),
                     "short_id": snippet.short_id,
                     "text": snippet.title + " " + snippet_version.content,
                 },
@@ -295,7 +295,7 @@ async def delete_snippet(
     await enqueue(
         "remove_snippet_index",
         {
-            "snippet_id": snippet.id,
+            "snippet_id": str(snippet.id),
             "short_id": snippet.short_id,
             "text": f"{snippet.title} {content}",
         },
@@ -355,7 +355,7 @@ async def snippet_out_url(
     await redis.zadd(
         "snippets:expiry",
         {
-            f"snippet:{snippet.id}:{version_obj.version}": int(
+            f"snippet:{version_obj.snippet.short_id}:{version_obj.version}": int(
                 version_obj.expires_at.timestamp()
             )
         },
