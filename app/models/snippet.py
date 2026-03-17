@@ -43,7 +43,8 @@ class Snippet(SoftDeleteMixin, Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     version_counter = Column(Integer, default=1, nullable=False)
-
+    views = Column(Integer, nullable=False, default=0)
+    
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     versions = relationship("SnippetVersion", back_populates="snippet", lazy="selectin")
     author = relationship("User", back_populates="snippets")

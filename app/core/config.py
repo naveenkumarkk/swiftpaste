@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     CAPACITY: int = 10
     REFILL_RATE: int = 1
 
+    CLEANUP_EXPIRED_DELAY_SECONDS: int = 60
+    RECOVER_STUCK_JOBS_DELAY_SECONDS: int = 300
+    FLUSH_VIEWS_INTERVAL_SECONDS: int = 60 
+
     QUEUE: str = "jobs"
     PROCESSING: str = "processing"
     FAILED: str = "failed"

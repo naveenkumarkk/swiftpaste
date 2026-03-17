@@ -24,7 +24,7 @@ class SnippetVersionResponse(BaseModel):
     content: str
     visibility: VisibilityType
     expires_at: datetime | None
-
+    view: int
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -34,6 +34,7 @@ class SnippetResponse(BaseModel):
     title: str
     author: UserMeta
     created_at: datetime
+    views: int = 0
     latest_version: int
     current_version: SnippetVersionResponse
 

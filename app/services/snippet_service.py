@@ -57,6 +57,10 @@ def _deserialize_payload(raw: bytes | str) -> dict[str, Any]:
         raw = raw.decode("utf-8")
     return json.loads(raw)
 
+async def increment_snippet_views(snippet_id: str):
+    redis = get_redis()
+    key = f"snippet:views:{snippet_id}"
+    await redis.incr(key)
 
 async def create_new_version(
     snippet_id: UUID, content: str, visibility: VisibilityType, db_session: AsyncSession
@@ -98,6 +102,7 @@ async def create_snippet(
     snippet_data = {
         "author_id": user.id,
         "title": data.get("title"),
+        "views": 0,
     }
 
     version_data = {
@@ -151,17 +156,25 @@ async def create_snippet(
                 title=snippet.title,
                 created_at=snippet.created_at,
                 author=snippet.author,
+                views=snippet.views,
                 latest_version=snippet_version.version,
                 current_version=SnippetVersionResponse(
                     version=snippet_version.version,
                     content=snippet_version.content,
                     visibility=snippet_version.visibility,
                     expires_at=snippet_version.expires_at,
+                    view=snippet.views,
                 ),
             )
 
-        except IntegrityError:
+        except IntegrityError as exc:
             await db_session.rollback()
+
+            error_text = str(getattr(exc, "orig", exc)).lower()
+            if "short_id" in error_text or "ck_snippets_short_id_len" in error_text:
+                continue
+
+            raise
 
     raise AppError(
         code="SHORT_ID_GENERATION_FAILED",
@@ -238,6 +251,7 @@ async def update_snippet(
             title=snippet.title,
             short_id=snippet.short_id,
             created_at=snippet.created_at,
+            views=snippet.views,
             latest_version=snippet.version_counter,
             author=snippet.author,
             current_version=SnippetVersionResponse(
@@ -245,6 +259,7 @@ async def update_snippet(
                 content=snippet_version.content,
                 visibility=snippet_version.visibility,
                 expires_at=snippet_version.expires_at,
+                view=snippet.views,
             ),
         )
         payload_json = resp.model_dump(mode="json")
@@ -453,6 +468,7 @@ async def snippet_out_view(
         title=snippet.title,
         short_id=snippet.short_id,
         created_at=snippet.created_at,
+        views=snippet.views,
         latest_version=snippet.version_counter,
         author=snippet.author,
         current_version=SnippetVersionResponse(
@@ -460,6 +476,7 @@ async def snippet_out_view(
             content=version_obj.content,
             visibility=version_obj.visibility,
             expires_at=version_obj.expires_at,
+            view=snippet.views,
         ),
     )
 
@@ -536,7 +553,12 @@ async def search_snippets(
 
     cached = await redis.get(cache_key)
     if cached:
-        return Page.parse_raw(cached, params=params)
+        page = Page.parse_raw(cached, params=params)
+
+        for snippet in page.items:
+            await redis.incr(f"snippet:views:{snippet.short_id}")
+
+        return page
 
     tokens = tokenize(query)
     if not tokens:
@@ -576,11 +598,10 @@ async def search_snippets(
                 short_id=v.snippet.short_id,
                 title=v.snippet.title,
                 created_at=v.snippet.created_at,
+                views=v.snippet.views,
                 author=UserMeta(
                     id=getattr(v.snippet.author, "id", None),
-                    username=getattr(
-                        v.snippet.author, "username", str(v.snippet.author)
-                    ),
+                    username=getattr(v.snippet.author, "username", str(v.snippet.author)),
                     email=getattr(v.snippet.author, "email", None),
                 ),
                 latest_version=v.snippet.version_counter,
@@ -589,9 +610,13 @@ async def search_snippets(
                     content=v.content,
                     visibility=v.visibility,
                     expires_at=v.expires_at,
+                    view=v.snippet.views,
+                    
                 ),
             )
         )
+
+        await redis.incr(f"snippet:views:{v.snippet.short_id}")
 
     logger.info(
         "snippet_search",
