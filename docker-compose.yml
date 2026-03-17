@@ -74,6 +74,9 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ${API_MOUNT:-.:/app}
   migrate:
     build:
       context: .
