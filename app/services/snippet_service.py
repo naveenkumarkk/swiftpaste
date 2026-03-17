@@ -553,7 +553,10 @@ async def search_snippets(
 
     cached = await redis.get(cache_key)
     if cached:
-        page = Page.parse_raw(cached, params=params)
+        
+        page_data = json.loads(cached)
+        page = Page.parse_obj(page_data)
+        page.params = params  
 
         for snippet in page.items:
             await redis.incr(f"snippet:views:{snippet.short_id}")
@@ -611,7 +614,6 @@ async def search_snippets(
                     visibility=v.visibility,
                     expires_at=v.expires_at,
                     view=v.snippet.views,
-                    
                 ),
             )
         )
