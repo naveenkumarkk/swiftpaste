@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 from app.core.enum import VisibilityType
-
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 class SnippetVersion(Base):
     __tablename__ = "snippet_versions"
@@ -41,5 +41,10 @@ class SnippetVersion(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    search_vector = Column(
+        TSVECTOR,
+        nullable=True,
+        doc="TSVECTOR column used for full-text search",
     )
     snippet = relationship("Snippet", back_populates="versions")

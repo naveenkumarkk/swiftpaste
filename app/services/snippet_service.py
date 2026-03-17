@@ -25,14 +25,16 @@ from app.schemas.snippet import (
     SnippetVersionResponse,
     SnippetMetaResponse,
 )
+from app.schemas.user import UserMeta
 from app.utils.dep import generate_short_id, compute_expires_at
 import json
 from typing import Any
 from fastapi_pagination.ext.sqlalchemy import paginate
-from fastapi_pagination import Page
+from fastapi_pagination import Page, Params
 from app.metrics.version_metrics import version_creations
 from app.jobs.queue import enqueue
 from app.utils.dep import tokenize
+from sqlalchemy import func
 
 logger = logging.getLogger("app")
 
@@ -518,16 +520,90 @@ async def get_all_snippet(
     return await paginate(db_session, stmt)
 
 
-async def search_snippets(query: str):
+async def search_snippets(
+    query: str,
+    db_session,
+    user=None,
+    request_id: str | None = None,
+    params: Params = Params(),
+) -> Page[SnippetResponse]:
+
+    if not query.strip():
+        return Page.create([], total=0, params=params)
+
     redis = get_redis()
+    cache_key = f"search:result:{query.lower()}:{params.page}:{params.size}"
+
+    cached = await redis.get(cache_key)
+    if cached:
+        return Page.parse_raw(cached, params=params)
 
     tokens = tokenize(query)
+    if not tokens:
+        return Page.create([], total=0, params=params)
 
-    keys = [f"search:index:{t}" for t in tokens]
+    redis_keys = [f"search:index:{t}" for t in tokens]
+    ids = await redis.sinter(*redis_keys)
 
-    if not keys:
-        return []
+    if not ids:
+        return Page.create([], total=0, params=params)
 
-    ids = await redis.sinter(*keys)
+    short_ids = [i.decode() if isinstance(i, bytes) else i for i in ids]
 
-    return ids
+    ts_query = func.plainto_tsquery("english", query)
+
+    stmt = (
+        select(SnippetVersion)
+        .join(Snippet)
+        .options(joinedload(SnippetVersion.snippet).joinedload(Snippet.author))
+        .where(Snippet.short_id.in_(short_ids))
+        .where(SnippetVersion.search_vector.op("@@")(ts_query))
+        .order_by(func.ts_rank(SnippetVersion.search_vector, ts_query).desc())
+    )
+
+    result = await db_session.execute(stmt)
+    snippet_versions = result.scalars().all()
+
+    responses: list[SnippetResponse] = []
+
+    for v in snippet_versions:
+        if v.visibility == VisibilityType.PRIVATE and user is None:
+            continue
+
+        responses.append(
+            SnippetResponse(
+                id=v.snippet.id,
+                short_id=v.snippet.short_id,
+                title=v.snippet.title,
+                created_at=v.snippet.created_at,
+                author=UserMeta(
+                    id=getattr(v.snippet.author, "id", None),
+                    username=getattr(
+                        v.snippet.author, "username", str(v.snippet.author)
+                    ),
+                    email=getattr(v.snippet.author, "email", None),
+                ),
+                latest_version=v.snippet.version_counter,
+                current_version=SnippetVersionResponse(
+                    version=v.version,
+                    content=v.content,
+                    visibility=v.visibility,
+                    expires_at=v.expires_at,
+                ),
+            )
+        )
+
+    logger.info(
+        "snippet_search",
+        extra={
+            "request_id": request_id,
+            "query": query,
+            "results_count": len(responses),
+        },
+    )
+
+    page = Page.create(responses, total=len(responses), params=params)
+
+    await redis.setex(cache_key, 60, page.model_dump_json())
+
+    return page

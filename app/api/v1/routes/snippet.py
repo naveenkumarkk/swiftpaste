@@ -19,8 +19,9 @@ from app.services.snippet_service import (
     snippet_out_url,
     get_snippet_cached,
     get_all_snippet,
+    search_snippets,
 )
-from fastapi_pagination import Page
+from fastapi_pagination import Page, Params
 from app.rate_limiter.decorator import rate_limit
 
 router = APIRouter()
@@ -133,11 +134,34 @@ async def get_all(
 
 
 @router.get(
+    "/search",
+    response_model=Page[SnippetResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Search snippet",
+)
+@rate_limit(capacity=5, refill_rate=1)
+async def search(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    params: Params = Depends(),
+    db: AsyncSession = Depends(get_async_session),
+    user=Depends(optional_user),
+):
+    request_id = getattr(request.state, "request_id", None)
+    return await search_snippets(
+        query,
+        db_session=db,
+        user=user,
+        request_id=request_id,
+        params=params,
+    )
+
+
+@router.get(
     "/{short_id}",
     response_model=SnippetResponse,
     status_code=status.HTTP_200_OK,
     summary="View shared snippet",
-    description="Endpoint to access the shared snippet",
 )
 @rate_limit(capacity=5, refill_rate=1)
 async def view_snippet_out(
