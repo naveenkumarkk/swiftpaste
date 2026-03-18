@@ -498,4 +498,3 @@ Notes:
 - Alembic reads `DATABASE_SYNC_URL` from settings via `alembic/env.py`.
 - Current migration set includes initial schema in `alembic/versions/d07059efe000_initial_migration.py`.
 
-Please note that this project is still in progress 😁
