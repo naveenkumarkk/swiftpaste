@@ -401,6 +401,32 @@ Docs URL in this mode:
 
 - `http://localhost:8000/docs`
 
+## Testing
+
+### Unit tests (service logic)
+
+```bash
+uv run python -m unittest tests.test_snippet_service -v
+```
+
+### Integration tests (API + DB)
+
+Make sure PostgreSQL is reachable using `DATABASE_URL` and then run:
+
+```bash
+uv run python -m unittest tests.test_snippets -v
+```
+
+### Load test (k6)
+
+Provide a public snippet `short_id` and optional version:
+
+```bash
+k6 run tests/load.js -e BASE_URL=http://localhost:8000 -e SHORT_ID=<short_id> -e VERSION=<version>
+```
+
+If `VERSION` is omitted, the script targets the latest snippet version.
+
 ## Docker Commands Reference
 
 - Start all services: `docker compose up -d`

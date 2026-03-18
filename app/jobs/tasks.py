@@ -12,6 +12,10 @@ from app.utils.dep import tokenize
 
 logger = logging.getLogger("app")
 
+CLEANUP_EXPIRED_DELAY_SECONDS = settings.CLEANUP_EXPIRED_DELAY_SECONDS
+RECOVER_STUCK_JOBS_DELAY_SECONDS = settings.RECOVER_STUCK_JOBS_DELAY_SECONDS
+FLUSH_VIEWS_INTERVAL_SECONDS = settings.FLUSH_VIEWS_INTERVAL_SECONDS
+
 
 async def index_snippet(payload):
     redis = get_redis()
@@ -107,7 +111,7 @@ async def cleanup_expired(payload=None):
         await pipe.execute()
         logger.info("expired_snippets_cleaned", extra={"count": len(parsed_keys)})
 
-    await enqueue("cleanup_expired", {}, delay=settings.CLEANUP_EXPIRED_DELAY_SECONDS)
+    await enqueue("cleanup_expired", {}, delay=CLEANUP_EXPIRED_DELAY_SECONDS)
 
 
 async def recover_stuck_jobs(payload=None):
@@ -128,7 +132,7 @@ async def recover_stuck_jobs(payload=None):
         logger.info("stuck_jobs_requeued", extra={"count": stuck_count})
 
     await enqueue(
-        "recover_stuck_jobs", {}, delay=settings.RECOVER_STUCK_JOBS_DELAY_SECONDS
+        "recover_stuck_jobs", {}, delay=RECOVER_STUCK_JOBS_DELAY_SECONDS
     )
 
 
@@ -170,7 +174,7 @@ async def flush_views_to_db(payload=None):
     await enqueue(
         "flush_views_to_db",
         {},
-        delay=settings.FLUSH_VIEWS_INTERVAL_SECONDS
+        delay=FLUSH_VIEWS_INTERVAL_SECONDS
     )
 
 TASKS = {
