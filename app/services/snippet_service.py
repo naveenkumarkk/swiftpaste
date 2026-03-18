@@ -35,6 +35,7 @@ from app.metrics.version_metrics import version_creations
 from app.jobs.queue import enqueue
 from app.utils.dep import tokenize
 from sqlalchemy import func
+from pydantic import TypeAdapter
 
 logger = logging.getLogger("app")
 
@@ -57,10 +58,12 @@ def _deserialize_payload(raw: bytes | str) -> dict[str, Any]:
         raw = raw.decode("utf-8")
     return json.loads(raw)
 
+
 async def increment_snippet_views(snippet_id: str):
     redis = get_redis()
     key = f"snippet:views:{snippet_id}"
     await redis.incr(key)
+
 
 async def create_new_version(
     snippet_id: UUID, content: str, visibility: VisibilityType, db_session: AsyncSession
@@ -553,10 +556,12 @@ async def search_snippets(
 
     cached = await redis.get(cache_key)
     if cached:
-        
-        page_data = json.loads(cached)
-        page = Page.parse_obj(page_data)
-        page.params = params  
+        cached_data = json.loads(cached)
+        page = Page.create(
+            items=[SnippetResponse.parse_obj(i) for i in cached_data["items"]],
+            total=cached_data["total"],
+            params=params,
+        )
 
         for snippet in page.items:
             await redis.incr(f"snippet:views:{snippet.short_id}")
@@ -574,7 +579,6 @@ async def search_snippets(
         return Page.create([], total=0, params=params)
 
     short_ids = [i.decode() if isinstance(i, bytes) else i for i in ids]
-
     ts_query = func.plainto_tsquery("english", query)
 
     stmt = (
@@ -604,7 +608,9 @@ async def search_snippets(
                 views=v.snippet.views,
                 author=UserMeta(
                     id=getattr(v.snippet.author, "id", None),
-                    username=getattr(v.snippet.author, "username", str(v.snippet.author)),
+                    username=getattr(
+                        v.snippet.author, "username", str(v.snippet.author)
+                    ),
                     email=getattr(v.snippet.author, "email", None),
                 ),
                 latest_version=v.snippet.version_counter,
@@ -631,6 +637,13 @@ async def search_snippets(
 
     page = Page.create(responses, total=len(responses), params=params)
 
-    await redis.setex(cache_key, 60, page.model_dump_json())
+    cache_payload = TypeAdapter(dict).dump_json(
+        {
+            "items": [r.model_dump() for r in responses],
+            "total": len(responses),
+        }
+    )
+
+    await redis.setex(cache_key, 60, cache_payload)
 
     return page
