@@ -12,6 +12,7 @@ SwiftPaste is a FastAPI-based snippet manager with snippet versioning, JWT auth,
 - NGINX (reverse proxy)
 - Docker Compose
 - Prometheus-compatible metrics via `prometheus_client`
+- Redis-backed background jobs (queue + worker + scheduler)
 
 ## Architecture
 
@@ -151,6 +152,7 @@ sequenceDiagram
 - `title`
 - `author_id` (FK -> `users.id`)
 - `version_counter` (latest version number)
+- `views` (total snippet views)
 - `created_at`, `deleted_at` (soft delete)
 
 `snippet_versions` table:
@@ -293,6 +295,10 @@ Logging and traceability:
 - Visibility controls (`public`, `private`) at version level.
 - Expiring shared links via TTL-based `expires_at` management.
 - User-scoped snippet listing with pagination.
+- Redis token-bucket rate limiting on snippet routes.
+- Full-text snippet search with PostgreSQL ranking and Redis-backed token indexing.
+- Background job processing with worker/scheduler for indexing, cleanup, and retries.
+- Buffered snippet view counting with scheduled flush to PostgreSQL.
 - Health endpoints for liveness/readiness and dependency status.
 
 ## Core Endpoints
@@ -307,6 +313,7 @@ Base API prefix is `/v1/api` (from `settings.V1_API_PREFIX`).
 - `POST /v1/api/snippet/{id}/share` create/extend share URL (auth required)
 - `GET /v1/api/snippet/{short_id}` read shared snippet (optional auth)
 - `GET /v1/api/snippet/` list current user snippets (paginated, auth required)
+- `GET /v1/api/snippet/search?query=...` search snippets (optional auth)
 
 ### Health and metrics routes
 
@@ -403,19 +410,43 @@ Docs URL in this mode:
 
 ## Testing
 
-### Unit tests (service logic)
+Current automated test modules:
+
+- `tests/test_snippet_service.py` — service-layer unit tests (cache key, serialization, Redis retry/fallback/cache behavior)
+- `tests/test_jobs.py` — background job task unit tests (cleanup and stuck-job recovery rescheduling)
+- `tests/test_snippets.py` — API + DB integration tests for snippet create/update/read/delete paths
+
+### Run full suite
+
+```bash
+uv run python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### Run specific modules
+
+Service unit tests:
 
 ```bash
 uv run python -m unittest tests.test_snippet_service -v
 ```
 
-### Integration tests (API + DB)
+Job task unit tests:
 
-Make sure PostgreSQL is reachable using `DATABASE_URL` and then run:
+```bash
+uv run python -m unittest tests.test_jobs -v
+```
+
+Snippet API integration tests:
 
 ```bash
 uv run python -m unittest tests.test_snippets -v
 ```
+
+Integration test notes:
+
+- PostgreSQL must be reachable via `DATABASE_URL`
+- The integration suite attempts configured host first and falls back from `db` to `localhost` when running from host
+- Each run uses a temporary PostgreSQL schema and drops it during teardown for isolation
 
 ### Load test (k6)
 
@@ -424,6 +455,8 @@ Provide a public snippet `short_id` and optional version:
 ```bash
 k6 run tests/load.js -e BASE_URL=http://localhost:8000 -e SHORT_ID=<short_id> -e VERSION=<version>
 ```
+
+- The k6 scenario ramps to 20 VUs, checks response status/content, and enforces failure/latency thresholds.
 
 If `VERSION` is omitted, the script targets the latest snippet version.
 
